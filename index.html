@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>하남교구 기도 제목 보고서</title>
+  
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg-color: #ffffff;
+      --app-bg: #F5F5F7;
+      --text-main: #1d1d1f;
+      --text-sub: #86868b;
+      --accent-blue: #0071e3;
+      --border-color: #d2d2d7;
+      --tag-public-bg: #eef5ff;
+      --tag-private-bg: #fff2f4;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    
+    body {
+      background-color: var(--app-bg);
+      color: var(--text-main);
+      font-family: 'Pretendard', -apple-system, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      word-break: keep-all;
+    }
+
+    /* 반응형 컨테이너 */
+    .report-container {
+      max-width: 900px;
+      margin: 20px auto;
+      background: var(--bg-color);
+      padding: 40px 30px;
+      min-height: 100vh;
+      box-shadow: 0 4px 30px rgba(0,0,0,0.03);
+    }
+
+    @media (max-width: 600px) {
+      .report-container { margin: 0; padding: 30px 20px; }
+      .header h1 { font-size: 1.5rem !important; }
+    }
+
+    /* 헤더 디자인 */
+    .header {
+      border-bottom: 2px solid var(--text-main);
+      padding-bottom: 25px;
+      margin-bottom: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .header h1 { margin: 0; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
+    .header .church-name { color: var(--accent-blue); font-weight: 700; font-size: 0.95rem; }
+    .header .date-info { color: var(--text-sub); font-size: 0.9rem; }
+
+    /* 리스트 및 아이템 */
+    .prayer-list { display: flex; flex-direction: column; }
+    
+    .prayer-item {
+      padding: 25px 0;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      page-break-inside: avoid;
+    }
+
+    .prayer-item:last-child { border-bottom: none; }
+
+    /* 메타 정보 (이름, 배지, 시간) */
+    .prayer-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-name { font-weight: 700; font-size: 1.05rem; color: var(--text-main); }
+    
+    .badge {
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .badge-public { background: var(--tag-public-bg); color: var(--accent-blue); }
+    .badge-private { background: var(--tag-private-bg); color: #ff2d55; }
+
+    .post-time {
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      margin-left: auto; /* 우측 정렬 */
+    }
+
+    @media (max-width: 480px) {
+      .post-time { width: 100%; margin-top: -5px; order: 3; }
+    }
+
+    /* 기도 본문 */
+    .prayer-content {
+      font-size: 1.1rem;
+      color: #333;
+      white-space: pre-wrap; /* 줄바꿈 유지 */
+      font-weight: 400;
+      line-height: 1.7;
+    }
+
+    /* 하단 인쇄 버튼 */
+    .toolbar {
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      z-index: 100;
+    }
+
+    .btn-print {
+      background: var(--text-main);
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 50px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      transition: all 0.2s ease;
+    }
+
+    .btn-print:active { transform: scale(0.95); }
+
+    /* 인쇄 전 전용 스타일 */
+    @media print {
+      body { background: white; }
+      .report-container { margin: 0; padding: 0; box-shadow: none; width: 100%; max-width: 100%; }
+      .toolbar { display: none; }
+      .prayer-item { border-color: #eee; padding: 20px 0; }
+    }
+
+    .loading { text-align: center; padding: 60px; color: var(--text-sub); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+
+<div class="report-container">
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="church-name">하남교구 목양리포트</div>
+        <h1>온라인 기도실 기록부</h1>
+      </div>
+      <div class="date-info" id="current-date"></div>
+    </div>
+    <div style="font-size: 0.85rem; color: var(--text-sub);">* 아래 목록은 작성된 순서대로(과거 → 현재) 정렬되어 있습니다.</div>
+  </div>
+
+  <div id="prayer-list-container">
+    <div class="loading">
+      <div style="margin-bottom: 10px;">기도 데이터를 불러오고 있습니다...</div>
+    </div>
+  </div>
+</div>
+
+<div class="toolbar">
+  <button onclick="window.print()" class="btn-print">
+    <i class="bi bi-printer"></i> 보고서 인쇄 / PDF 저장
+  </button>
+</div>
+
+<script>
+  // 1. Supabase 접속 정보 (사용자 정보로 교체 필요)
+  const SUPABASE_URL = 'https://drefhlxceslpievzltod.supabase.co'; 
+  const SUPABASE_KEY = 'sb_publishable_tYFi8blJqVdXay3-ggOxHg_kjQGr_oX';
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // 현재 날짜 설정
+  document.getElementById('current-date').innerText = new Date().toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  async function loadPrayers() {
+    const container = document.getElementById('prayer-list-container');
+
+    try {
+      // 2. 데이터 가져오기 (오래된 순 ascending: true)
+      const { data, error } = await _supabase
+        .from('prayers')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="loading">아직 등록된 기도 제목이 없습니다.</div>';
+        return;
+      }
+
+      // 3. 리스트 렌더링
+      let html = '<div class="prayer-list">';
+      data.forEach((item, index) => {
+        const badgeClass = item.is_public ? 'badge-public' : 'badge-private';
+        const badgeText = item.is_public ? '공유 기도' : '교역자 전용';
+        
+        // 날짜 및 시간 포맷팅
+        const dateObj = new Date(item.created_at);
+        const timeStr = dateObj.toLocaleString('ko-KR', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        html += `
+          <div class="prayer-item">
+            <div class="prayer-meta">
+              <span style="color:var(--text-sub); font-size:0.9rem; font-weight:600;">#${index + 1}</span>
+              <span class="user-name">${item.name} 성도님</span>
+              <span class="badge ${badgeClass}">${badgeText}</span>
+              <span class="post-time">${timeStr}</span>
+            </div>
+            <div class="prayer-content">${item.content}</div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      
+      container.innerHTML = html;
+
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div class="loading text-danger">데이터 연결 실패. Supabase URL과 Key를 확인해 주세요.</div>';
+    }
+  }
+
+  loadPrayers();
+</script>
+
+</body>
+</html>
