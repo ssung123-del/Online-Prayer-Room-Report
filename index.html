@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>하남교구 온라인 기도실 보고서</title>
+
+  <!-- 1. Fonts & Icons -->
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- 2. Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', 'sans-serif'],
+          },
+          colors: {
+            primary: '#3b82f6', // Blue-500
+            primaryDark: '#2563eb', // Blue-600
+            paper: '#ffffff',
+            sub: '#F3F4F6', // Gray-100
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- 3. Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* 커스텀 스크롤바 */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* 인쇄 전용 스타일 */
+    @media print {
+      @page {
+        margin: 15mm;
+        size: A4;
+      }
+
+      body {
+        background: white !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .print-only {
+        display: block !important;
+      }
+
+      /* 인쇄 시 카드 스타일 재정의 - 잉크 절약 및 가독성 */
+      .prayer-card {
+        break-inside: avoid;
+        /* 페이지 중간에 잘림 방지 */
+        border: none !important;
+        border-bottom: 1px solid #ddd !important;
+        box-shadow: none !important;
+        background: white !important;
+        padding: 15px 0 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+
+      /* 인쇄 시 뱃지 스타일 단순화 */
+      .badge {
+        border: 1px solid #000;
+        background: white !important;
+        color: black !important;
+      }
+
+      /* 인쇄 시 폰트 크기 조정 */
+      .print-title {
+        font-size: 24pt !important;
+        font-weight: bold;
+      }
+
+      .print-content {
+        font-size: 11pt !important;
+        line-height: 1.5;
+      }
+
+      .print-meta {
+        font-size: 9pt !important;
+        color: #555 !important;
+      }
+
+      /* 목록 컨테이너의 그리드 해제 (순차 나열) */
+      #prayer-list-container {
+        display: block !important;
+      }
+    }
+
+    /* 화면 전용 스타일 */
+    .print-only {
+      display: none;
+    }
+
+    /* Glassmorphism 효과 */
+    .glass-header {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    /* 좋아요 버튼 하트 애니메이션 */
+    @keyframes heartPop {
+      0% { transform: scale(1); }
+      30% { transform: scale(1.35); }
+      60% { transform: scale(0.95); }
+      100% { transform: scale(1); }
+    }
+    .heart-pop {
+      animation: heartPop 0.4s ease-out;
+    }
+
+    /* 전체 기도하기 버튼 성공 상태 */
+    @keyframes successPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+      50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+    }
+    .pray-btn-active {
+      animation: successPulse 1s ease-out;
+    }
+  </style>
+</head>
+
+<body class="bg-[#F5F7FA] text-slate-800 antialiased min-h-screen">
+
+  <!-- [인쇄용 헤더] 화면엔 안 보임 -->
+  <div class="print-only mb-8">
+    <h1 class="text-3xl font-bold border-b-2 border-black pb-4 mb-4">온라인 기도실 사역 보고서</h1>
+    <div class="flex justify-between text-sm mb-8">
+      <span>부서: 하남교구</span>
+      <span id="print-date"></span>
+    </div>
+
+  </div>
+
+  <!-- [화면용 UI 컨테이너] -->
+  <div class="max-w-5xl mx-auto px-4 py-8 no-print">
+
+    <!-- 1. 헤더 & 타이틀 -->
+    <header class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div>
+        <span class="text-primary font-bold text-sm tracking-wider uppercase mb-1 block">Online Prayer Ministry</span>
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">하남교구 기도실 리포트</h1>
+        <p class="text-slate-500 mt-2 text-sm" id="screen-date"></p>
+      </div>
+      <button onclick="window.print()"
+        class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full font-medium shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center gap-2">
+        <i class="fa-solid fa-print"></i>
+        <span class="hidden sm:inline">보고서 인쇄</span>
+      </button>
+    </header>
+
+    <!-- 2. 대시보드 요약 (Stats) -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <!-- 총 기도제목 -->
+      <div
+        class="bg-white p-5 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300 border border-slate-100 relative overflow-hidden group">
+        <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+          <i class="fa-solid fa-hands-praying text-5xl text-primary"></i>
+        </div>
+        <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">총 기도제목</h3>
+        <div class="text-3xl font-bold text-slate-800" id="stat-total">-</div>
+        <div class="text-xs text-slate-400 mt-2">누적 데이터</div>
+      </div>
+
+      <!-- 공개 기도 -->
+      <div
+        class="bg-white p-5 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300 border border-slate-100 relative overflow-hidden group">
+        <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+          <i class="fa-solid fa-earth-americas text-5xl text-blue-500"></i>
+        </div>
+        <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">공유 기도 (공개)</h3>
+        <div class="text-3xl font-bold text-blue-600" id="stat-public">-</div>
+        <div class="text-xs text-slate-400 mt-2">중보기도팀 공유 가능</div>
+      </div>
+
+      <!-- 비공개 기도 -->
+      <div
+        class="bg-white p-5 rounded-2xl shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300 border border-slate-100 relative overflow-hidden group">
+        <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+          <i class="fa-solid fa-lock text-5xl text-rose-500"></i>
+        </div>
+        <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">교역자 전용 (비공개)</h3>
+        <div class="text-3xl font-bold text-rose-500" id="stat-private">-</div>
+        <div class="text-xs text-slate-400 mt-2">담당 목회자만 열람</div>
+      </div>
+    </div>
+
+    <!-- 3. 컨트롤 바 (검색 & 필터) -->
+    <div
+      class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-4 z-10 glass-header">
+      <!-- 탭 (필터) -->
+      <div class="flex p-1 bg-slate-100 rounded-lg w-full md:w-auto">
+        <button onclick="setFilter('all')" id="btn-all"
+          class="flex-1 md:flex-none px-4 py-2 text-sm font-semibold rounded-md shadow-sm bg-white text-slate-800 transition-all">
+          전체
+        </button>
+        <button onclick="setFilter('public')" id="btn-public"
+          class="flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all">
+          공유 기도
+        </button>
+        <button onclick="setFilter('private')" id="btn-private"
+          class="flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all">
+          교역자 전용
+        </button>
+      </div>
+
+      <!-- 우측 컨트롤 (검색 & 정렬 & 전체 기도) -->
+      <div class="flex gap-3 w-full md:w-auto flex-wrap">
+        <div class="relative w-full md:w-64">
+          <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
+          <input type="text" id="search-input" placeholder="성도 이름 또는 내용 검색..."
+            class="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+        </div>
+        <button onclick="toggleSort()" id="sort-btn"
+          class="px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-2 whitespace-nowrap">
+          <i class="fa-solid fa-arrow-down-short-wide"></i> <span id="sort-text">최신순</span>
+        </button>
+        <!-- 전체 기도하기 버튼 -->
+        <button onclick="prayAll()" id="pray-all-btn"
+          class="px-4 py-2 text-sm rounded-lg font-semibold transition-all flex items-center gap-2 whitespace-nowrap border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 active:scale-95">
+          <i class="fa-solid fa-heart"></i>
+          <span id="pray-all-text">모두 기도하기</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 메인 리스트 컨테이너 -->
+  <div id="prayer-list-container" class="max-w-5xl mx-auto px-4 pb-20 space-y-4">
+    <!-- 이곳에 데이터가 렌더링 됩니다 -->
+
+    <!-- Skeleton Loading UI -->
+    <div id="skeleton-loader" class="space-y-4 no-print">
+      <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm animate-pulse">
+        <div class="flex justify-between mb-4">
+          <div class="h-4 bg-slate-200 rounded w-24"></div>
+          <div class="h-4 bg-slate-200 rounded w-32"></div>
+        </div>
+        <div class="h-4 bg-slate-200 rounded w-full mb-2"></div>
+        <div class="h-4 bg-slate-200 rounded w-2/3"></div>
+      </div>
+      <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm animate-pulse">
+        <div class="flex justify-between mb-4">
+          <div class="h-4 bg-slate-200 rounded w-24"></div>
+          <div class="h-4 bg-slate-200 rounded w-32"></div>
+        </div>
+        <div class="h-4 bg-slate-200 rounded w-full mb-2"></div>
+        <div class="h-4 bg-slate-200 rounded w-2/3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll Top Button -->
+  <button onclick="window.scrollTo({top:0, behavior:'smooth'})"
+    class="fixed bottom-6 left-6 bg-white border border-slate-200 p-3 rounded-full shadow-lg text-slate-500 hover:text-primary z-50 transition-all opacity-0 pointer-events-none no-print"
+    id="scroll-top-btn">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
+
+  <script>
+    // ---------------------------------------------------------
+    // 1. 설정 및 상태 관리
+    // ---------------------------------------------------------
+    const SUPABASE_URL = 'https://drefhlxceslpievzltod.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_tYFi8blJqVdXay3-ggOxHg_kjQGr_oX';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let state = {
+      prayers: [],      // 전체 데이터
+      filteredData: [], // 필터링된 데이터
+      filter: 'all',    // all, public, private
+      sort: 'desc',     // desc(최신순), asc(과거순)
+      search: ''        // 검색어
+    };
+
+    // ---------------------------------------------------------
+    // 2. 초기화 및 이벤트 리스너
+    // ---------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      // 날짜 설정
+      const now = new Date();
+      const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+      document.getElementById('screen-date').innerText = now.toLocaleDateString('ko-KR', dateOptions);
+      document.getElementById('print-date').innerText = '출력일: ' + now.toLocaleString('ko-KR');
+
+      // 데이터 로드
+      loadPrayers();
+
+      // 검색 리스너
+      document.getElementById('search-input').addEventListener('input', (e) => {
+        state.search = e.target.value.trim().toLowerCase();
+        applyFilters();
+      });
+
+      // 스크롤 탑 버튼 로직
+      window.addEventListener('scroll', () => {
+        const btn = document.getElementById('scroll-top-btn');
+        if (window.scrollY > 300) {
+          btn.classList.remove('opacity-0', 'pointer-events-none');
+        } else {
+          btn.classList.add('opacity-0', 'pointer-events-none');
+        }
+      });
+    });
+
+    // ---------------------------------------------------------
+    // 3. 데이터 로직
+    // ---------------------------------------------------------
+    async function loadPrayers() {
+      try {
+        const { data, error } = await _supabase
+          .from('prayers')
+          .select('*')
+          .order('created_at', { ascending: false }); // 기본 최신순
+
+        if (error) throw error;
+
+        state.prayers = data || [];
+        applyFilters(); // 필터 적용 및 렌더링
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById('prayer-list-container').innerHTML = `
+                    <div class="text-center py-20 text-slate-400">
+                        <i class="fa-solid fa-triangle-exclamation text-4xl mb-4 text-rose-400"></i>
+                        <p>데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.</p>
+                    </div>
+                `;
+      }
+    }
+
+    // 필터 및 정렬 적용
+    function applyFilters() {
+      let result = [...state.prayers];
+
+      // 1. 탭 필터
+      if (state.filter === 'public') {
+        result = result.filter(item => item.is_public);
+      } else if (state.filter === 'private') {
+        result = result.filter(item => !item.is_public);
+      }
+
+      // 2. 검색
+      if (state.search) {
+        result = result.filter(item =>
+          (item.name && item.name.toLowerCase().includes(state.search)) ||
+          (item.content && item.content.toLowerCase().includes(state.search))
+        );
+      }
+
+      // 3. 정렬 (날짜)
+      result.sort((a, b) => {
+        const dateA = new Date(a.created_at);
+        const dateB = new Date(b.created_at);
+        return state.sort === 'desc' ? dateB - dateA : dateA - dateB;
+      });
+
+      state.filteredData = result;
+      updateDashboard();
+      renderList();
+      // 전체 기도 버튼 상태 동기화
+      updatePrayAllButton();
+    }
+
+    // 대시보드 카운트 업데이트
+    function updateDashboard() {
+      const total = state.prayers.length;
+      const publicCount = state.prayers.filter(p => p.is_public).length;
+      const privateCount = total - publicCount;
+
+      // 애니메이션 효과와 함께 숫자 업데이트 (간략 구현)
+      document.getElementById('stat-total').innerText = total;
+      document.getElementById('stat-public').innerText = publicCount;
+      document.getElementById('stat-private').innerText = privateCount;
+    }
+
+    // ---------------------------------------------------------
+    // 4. UI 렌더링
+    // ---------------------------------------------------------
+    function renderList() {
+      const container = document.getElementById('prayer-list-container');
+
+      // 로딩 스켈레톤 제거
+      const skeleton = document.getElementById('skeleton-loader');
+      if (skeleton) skeleton.remove();
+
+      if (state.filteredData.length === 0) {
+        container.innerHTML = `
+                    <div class="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
+                        <i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-4"></i>
+                        <p class="text-slate-500">검색 결과가 없습니다.</p>
+                    </div>
+                `;
+        return;
+      }
+
+      let html = '';
+      state.filteredData.forEach((item, index) => {
+        const isPublic = item.is_public;
+        const dateObj = new Date(item.created_at);
+
+        // 화면용 날짜 포맷
+        const dateStr = dateObj.toLocaleDateString('ko-KR', {
+          month: 'long', day: 'numeric', weekday: 'short'
+        });
+        const timeStr = dateObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+        // 인쇄용 날짜 포맷 (심플)
+        const printDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+
+        // 뱃지 스타일
+        const badgeClass = isPublic
+          ? 'bg-blue-50 text-blue-600 border-blue-100'
+          : 'bg-rose-50 text-rose-600 border-rose-100';
+        const badgeText = isPublic ? '공유 기도' : '교역자 전용';
+        const iconClass = isPublic ? 'fa-earth-americas' : 'fa-lock';
+
+        html += `
+                <div class="prayer-card group bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all duration-300 hover:border-primary/30 relative">
+                    <!-- 헤더/메타 -->
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${isPublic ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-500'}">
+                                <span class="font-bold text-sm">${item.name ? item.name.charAt(0) : '?'}</span>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-slate-800 text-lg">${item.name}</span>
+                                    <span class="badge text-[10px] px-2 py-0.5 rounded-full border font-medium ${badgeClass} flex items-center gap-1">
+                                        <i class="fa-solid ${iconClass} text-[9px]"></i> ${badgeText}
+                                    </span>
+                                </div>
+                                <div class="text-xs text-slate-400 print-meta">
+                                    ${dateStr} ${timeStr}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-slate-300 font-mono no-print">#${state.prayers.length - index}</div>
+                    </div>
+
+                    <!-- 본문 -->
+                    <div class="print-content text-slate-700 leading-relaxed whitespace-pre-wrap pl-0 md:pl-[52px]">${item.content}</div>
+
+                    <!-- 좋아요(기도하기) 버튼 -->
+                    <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 pl-0 md:pl-[52px] no-print">
+                      <button onclick="togglePray(${item.id})" id="pray-btn-${item.id}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95 ${
+                          isPrayedToday(item.id)
+                            ? 'bg-rose-100 text-rose-600 ring-1 ring-rose-200'
+                            : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100'
+                        }">
+                        <i class="fa-${isPrayedToday(item.id) ? 'solid' : 'regular'} fa-heart ${isPrayedToday(item.id) ? 'text-rose-500' : 'text-slate-400'}"></i>
+                        <span>${isPrayedToday(item.id) ? '기도했습니다' : '기도하기'}</span>
+                        <span class="text-xs font-medium ${isPrayedToday(item.id) ? 'text-rose-400' : 'text-slate-400'}">${getDailyCount(item)}</span>
+                      </button>
+                      <span class="text-xs text-slate-400">누적 ${item.prayed_count || 0}회</span>
+                    </div>
+                </div>
+                `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ---------------------------------------------------------
+    // 5. 좋아요(기도하기) 유틸 함수들
+    // ---------------------------------------------------------
+
+    // 오늘 날짜를 YYYY-MM-DD 형식으로 반환
+    function getTodayKey() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    // 해당 기도제목에 오늘 기도했는지 확인 (localStorage 기반)
+    function isPrayedToday(prayerId) {
+      return localStorage.getItem(`report_prayed_${prayerId}`) === getTodayKey();
+    }
+
+    // 일일 기도 카운트 반환 (날짜가 다르면 0)
+    function getDailyCount(item) {
+      return item.count_date === getTodayKey() ? (item.daily_prayed_count || 0) : 0;
+    }
+
+    // 개별 기도하기 토글
+    async function togglePray(prayerId) {
+      const item = state.prayers.find(p => p.id === prayerId);
+      if (!item) return;
+
+      const today = getTodayKey();
+      const wasPrayed = isPrayedToday(prayerId);
+      const newStatus = !wasPrayed;
+
+      // 날짜가 다르면 daily_prayed_count를 0으로 취급
+      const isNewDay = item.count_date !== today;
+      const currentDaily = isNewDay ? 0 : (item.daily_prayed_count || 0);
+      const currentTotal = item.prayed_count || 0;
+
+      const newTotal = newStatus ? currentTotal + 1 : Math.max(0, currentTotal - 1);
+      const newDaily = newStatus ? currentDaily + 1 : Math.max(0, currentDaily - 1);
+
+      // 낙관적 UI 업데이트
+      item.prayed_count = newTotal;
+      item.daily_prayed_count = newDaily;
+      item.count_date = today;
+
+      if (newStatus) {
+        localStorage.setItem(`report_prayed_${prayerId}`, today);
+      } else {
+        localStorage.removeItem(`report_prayed_${prayerId}`);
+      }
+
+      // 하트 팝 애니메이션
+      const btnEl = document.getElementById(`pray-btn-${prayerId}`);
+      if (btnEl) {
+        btnEl.classList.add('heart-pop');
+        setTimeout(() => btnEl.classList.remove('heart-pop'), 400);
+      }
+
+      renderList();
+      updatePrayAllButton();
+
+      // DB 업데이트
+      try {
+        await _supabase.from('prayers').update({
+          prayed_count: newTotal,
+          daily_prayed_count: newDaily,
+          count_date: today,
+        }).eq('id', prayerId);
+      } catch (err) {
+        console.error('기도 카운트 업데이트 실패:', err);
+        // 롤백
+        item.prayed_count = currentTotal;
+        item.daily_prayed_count = currentDaily;
+        item.count_date = isNewDay ? item.count_date : today;
+        if (wasPrayed) {
+          localStorage.setItem(`report_prayed_${prayerId}`, today);
+        } else {
+          localStorage.removeItem(`report_prayed_${prayerId}`);
+        }
+        renderList();
+        updatePrayAllButton();
+      }
+    }
+
+    // 전체 기도하기 — 현재 필터링된 목록 전체에 대해 기도하기
+    async function prayAll() {
+      const today = getTodayKey();
+      // 아직 기도하지 않은 항목만 대상
+      const unprayedItems = state.filteredData.filter(p => !isPrayedToday(p.id));
+
+      if (unprayedItems.length === 0) {
+        // 이미 모두 기도한 상태 → 전체 취소
+        const allPrayed = state.filteredData.filter(p => isPrayedToday(p.id));
+        for (const item of allPrayed) {
+          const isNewDay = item.count_date !== today;
+          const currentDaily = isNewDay ? 0 : (item.daily_prayed_count || 0);
+          item.prayed_count = Math.max(0, (item.prayed_count || 0) - 1);
+          item.daily_prayed_count = Math.max(0, currentDaily - 1);
+          item.count_date = today;
+          localStorage.removeItem(`report_prayed_${item.id}`);
+        }
+        renderList();
+        updatePrayAllButton();
+        // DB 일괄 업데이트
+        const promises = allPrayed.map(item =>
+          _supabase.from('prayers').update({
+            prayed_count: item.prayed_count,
+            daily_prayed_count: item.daily_prayed_count,
+            count_date: today,
+          }).eq('id', item.id)
+        );
+        await Promise.all(promises);
+        return;
+      }
+
+      // 기도하지 않은 항목 일괄 기도
+      for (const item of unprayedItems) {
+        const isNewDay = item.count_date !== today;
+        const currentDaily = isNewDay ? 0 : (item.daily_prayed_count || 0);
+        item.prayed_count = (item.prayed_count || 0) + 1;
+        item.daily_prayed_count = currentDaily + 1;
+        item.count_date = today;
+        localStorage.setItem(`report_prayed_${item.id}`, today);
+      }
+
+      // 버튼 애니메이션
+      const allBtn = document.getElementById('pray-all-btn');
+      if (allBtn) allBtn.classList.add('pray-btn-active');
+      setTimeout(() => { if (allBtn) allBtn.classList.remove('pray-btn-active'); }, 1000);
+
+      renderList();
+      updatePrayAllButton();
+
+      // DB 일괄 업데이트
+      const promises = unprayedItems.map(item =>
+        _supabase.from('prayers').update({
+          prayed_count: item.prayed_count,
+          daily_prayed_count: item.daily_prayed_count,
+          count_date: today,
+        }).eq('id', item.id)
+      );
+      await Promise.all(promises);
+    }
+
+    // 전체 기도하기 버튼 상태 업데이트
+    function updatePrayAllButton() {
+      const btn = document.getElementById('pray-all-btn');
+      if (!btn) return;
+      const allDone = state.filteredData.length > 0 && state.filteredData.every(p => isPrayedToday(p.id));
+      const textEl = document.getElementById('pray-all-text');
+      if (allDone) {
+        btn.className = 'px-4 py-2 text-sm rounded-lg font-semibold transition-all flex items-center gap-2 whitespace-nowrap bg-rose-500 text-white border border-rose-500 hover:bg-rose-600 active:scale-95';
+        if (textEl) textEl.innerText = '기도 취소하기';
+      } else {
+        btn.className = 'px-4 py-2 text-sm rounded-lg font-semibold transition-all flex items-center gap-2 whitespace-nowrap border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 active:scale-95';
+        if (textEl) textEl.innerText = '모두 기도하기';
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 6. 인터랙션 함수들
+    // ---------------------------------------------------------
+    function setFilter(type) {
+      state.filter = type;
+
+      // 버튼 스타일 업데이트
+      const btnIds = ['btn-all', 'btn-public', 'btn-private'];
+      btnIds.forEach(id => {
+        const btn = document.getElementById(id);
+        if (id === `btn-${type}`) {
+          btn.className = "flex-1 md:flex-none px-4 py-2 text-sm font-semibold rounded-md shadow-sm bg-white text-slate-800 transition-all ring-1 ring-black/5";
+        } else {
+          btn.className = "flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all hover:bg-slate-200/50";
+        }
+      });
+
+      applyFilters();
+    }
+
+    function toggleSort() {
+      state.sort = state.sort === 'desc' ? 'asc' : 'desc';
+      const btn = document.getElementById('sort-btn');
+      const text = document.getElementById('sort-text');
+
+      if (state.sort === 'desc') {
+        btn.innerHTML = '<i class="fa-solid fa-arrow-down-short-wide"></i> <span id="sort-text">최신순</span>';
+      } else {
+        btn.innerHTML = '<i class="fa-solid fa-arrow-up-wide-short"></i> <span id="sort-text">과거순</span>';
+      }
+      applyFilters();
+    }
+  </script>
+</body>
+
+</html>
